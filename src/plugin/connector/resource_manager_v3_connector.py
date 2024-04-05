@@ -1,4 +1,5 @@
 import logging
+import itertools
 
 from plugin.connector.base_connector import GoogleCloudConnector
 
@@ -25,3 +26,8 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
     def list_folders(self, parent):
         results = self.client.folders().list(parent=parent).execute()
         return results.get("folders", [])
+
+    def list_role_bindings(self, resource):
+        result = self.client.projects().getIamPolicy(resource=resource).execute()
+        bindings = result.get("bindings", [])
+        return list(itertools.chain(*[binding["members"] for binding in bindings]))
