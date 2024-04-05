@@ -15,16 +15,13 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
         super().__init__(**kwargs)
         self.secret_data = kwargs.get("secret_data", {})
 
-    def get_project(self):
-        name = f"projects/{self.secret_data['project_id']}"
-        return self.client.projects().get(name=name).execute()
-
-    def list_projects_by_organization_id(self, organization_id):
-        result = self.client.projects().list(parent=organization_id).execute()
+    def list_projects(self, parent):
+        result = self.client.projects().list(parent=parent).execute()
         return result.get("projects", [])
 
     def get_organization(self, organization_id):
         return self.client.organizations().get(name=organization_id).execute()
 
-    def list_folders_by_organization_id(self, organization_id):
-        return self.client.folders().list(parent=organization_id).execute()
+    def list_folders(self, parent):
+        results = self.client.folders().list(parent=parent).execute()
+        return results.get("folders", [])

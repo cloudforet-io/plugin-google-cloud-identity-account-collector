@@ -1,4 +1,6 @@
+import copy
 import logging
+from collections import deque
 from spaceone.core.manager import BaseManager
 from plugin.connector.resource_manager_v1_connector import ResourceManagerV1Connector
 from plugin.connector.resource_manager_v3_connector import ResourceManagerV3Connector
@@ -17,6 +19,9 @@ class AccountCollectorManager(BaseManager):
         self.resource_manager_v3_connector = ResourceManagerV3Connector(
             secret_data=self.secret_data
         )
+        self.exclude_projects = None
+        self.exclude_folders = None
+        self.results = []
 
     def sync(self) -> list:
         """sync Google Cloud resources
@@ -32,50 +37,42 @@ class AccountCollectorManager(BaseManager):
                 }
         ]
         """
-        results = []
-        exclude_projects = self.options.get("exclude_projects", [])
+        self.exclude_projects = self.options.get("exclude_projects", [])
+        self.exclude_folders = self.options.get("exclude_folders", [])
+        self.exclude_folders = [
+            str(int(folder_id)) for folder_id in self.exclude_folders
+        ]
 
         projects_info = self.resource_manager_v1_connector.list_projects()
-        # organization_info = self._get_organization_info(projects_info)
-        #
-        # if not organization_info:
-        #     raise Exception(
-        #         "[sync] The Organization belonging to this ServiceAccount cannot be found."
-        #     )
+        organization_info = self._get_organization_info(projects_info)
 
-        organization_info = {
-            "displayName": "Google Cloud Test",
-            "name": "organizations/597078905893",
-        }
-        organization_name = organization_info["displayName"]
-        organization_id = organization_info["name"]
+        if not organization_info:
+            raise Exception(
+                "[sync] The Organization belonging to this ServiceAccount cannot be found."
+            )
 
-        for project_info in projects_info:
-            project_id = project_info["projectId"]
-            project_name = project_info["name"]
-            project_state = project_info["lifecycleState"]
-            project_tags = project_info.get("labels", {})
+        parent = organization_info["name"]
 
-            if project_id not in exclude_projects and project_state == "ACTIVE":
-                result = {
-                    "name": project_name,
-                    "data": {
-                        "project_id": project_id,
-                    },
-                    "secret_schema_id": "google-secret-project-id",
-                    "secret_data": {
-                        "project_id": project_id,
-                    },
-                    "resource_id": project_id,
-                    "tags": project_tags,
-                    "location": [
-                        {"name": organization_name, "resource_id": organization_id}
-                    ],
-                }
+        dq = deque()
+        dq.append([parent, []])
+        while dq:
+            for idx in range(len(dq)):
+                parent, current_locations = dq.popleft()
+                self._create_project_response(parent, current_locations)
 
-                results.append(result)
-
-        return results
+                folders_info = self.resource_manager_v3_connector.list_folders(parent)
+                for folder_info in folders_info:
+                    folder_parent = folder_info["name"]
+                    prefix, folder_id = folder_info["name"].split("/")
+                    folder_name = folder_info["displayName"]
+                    if folder_id not in self.exclude_folders:
+                        parent = folder_parent
+                        next_locations = copy.deepcopy(current_locations)
+                        next_locations.append(
+                            {"name": folder_name, "resource_id": folder_parent}
+                        )
+                        dq.append([parent, next_locations])
+        return self.results
 
     def _get_organization_info(self, projects_info):
         organization_info = {}
@@ -95,3 +92,36 @@ class AccountCollectorManager(BaseManager):
                     organization_parent
                 )
         return organization_info
+
+    @staticmethod
+    def _make_result(project_info, locations):
+        project_id = project_info["projectId"]
+        project_name = project_info["displayName"]
+        project_tags = project_info.get("labels", {})
+        return {
+            "name": project_name,
+            "data": {
+                "project_id": project_id,
+            },
+            "secret_schema_id": "google-secret-project-id",
+            "secret_data": {
+                "project_id": project_id,
+            },
+            "resource_id": project_id,
+            "tags": project_tags,
+            "location": locations,
+        }
+
+    def _create_project_response(self, parent, locations):
+        projects_info = self.resource_manager_v3_connector.list_projects(parent)
+
+        if projects_info:
+            for project_info in projects_info:
+                project_id = project_info["projectId"]
+                project_state = project_info["state"]
+
+                if (
+                    project_id not in self.exclude_projects
+                    and project_state == "ACTIVE"
+                ):
+                    self.results.append(self._make_result(project_info, locations))
