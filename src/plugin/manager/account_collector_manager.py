@@ -1,4 +1,5 @@
 import copy
+import fnmatch
 import logging
 from collections import deque
 from spaceone.core.manager import BaseManager
@@ -135,7 +136,7 @@ class AccountCollectorManager(BaseManager):
                 project_state = project_info["state"]
 
                 if (
-                    project_id not in self.exclude_projects
+                    self._check_exclude_project(project_id)
                     and project_state == "ACTIVE"
                 ):
                     if self._is_trusting_project(project_id):
@@ -160,3 +161,9 @@ class AccountCollectorManager(BaseManager):
             return True
         else:
             return False
+
+    def _check_exclude_project(self, project_id):
+        for exclude_project_id in self.exclude_projects:
+            if fnmatch.fnmatch(project_id, exclude_project_id):
+                return False
+        return True
