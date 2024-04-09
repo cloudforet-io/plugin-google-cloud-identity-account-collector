@@ -31,3 +31,7 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
         result = self.client.projects().getIamPolicy(resource=resource).execute()
         bindings = result.get("bindings", [])
         return list(itertools.chain(*[binding["members"] for binding in bindings]))
+
+    def search_folders(self):
+        results = self.client.folders().search().execute()
+        return results.get("folders", [])
