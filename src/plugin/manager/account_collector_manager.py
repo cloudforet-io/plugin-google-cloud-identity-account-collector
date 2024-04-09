@@ -114,32 +114,23 @@ class AccountCollectorManager(BaseManager):
         project_id = project_info["projectId"]
         project_name = project_info["displayName"]
         project_tags = project_info.get("labels", {})
+        result = {
+            "name": project_name,
+            "data": {
+                "project_id": project_id,
+            },
+            "secret_schema_id": "google-secret-project-id",
+            "resource_id": project_id,
+            "tags": project_tags,
+            "location": locations,
+        }
 
         if is_secret_data:
-            return {
-                "name": project_name,
-                "data": {
-                    "project_id": project_id,
-                },
-                "secret_schema_id": "google-secret-project-id",
-                "secret_data": {
-                    "project_id": project_id,
-                },
-                "resource_id": project_id,
-                "tags": project_tags,
-                "location": locations,
+            result["secret_data"] = {
+                "project_id": project_id,
             }
-        else:
-            return {
-                "name": project_name,
-                "data": {
-                    "project_id": project_id,
-                },
-                "secret_schema_id": "google-secret-project-id",
-                "resource_id": project_id,
-                "tags": project_tags,
-                "location": locations,
-            }
+
+        return result
 
     def _create_project_response(self, parent, locations):
         projects_info = self.resource_manager_v3_connector.list_projects(parent)
@@ -167,6 +158,7 @@ class AccountCollectorManager(BaseManager):
             role_bindings = self.resource_manager_v3_connector.list_role_bindings(
                 resource=f"projects/{project_id}"
             )
+            _LOGGER.debug(f"[sync] {project_id} of role_bindings: {role_bindings}")
         except Exception as e:
             _LOGGER.error(f"[sync] failed to get role_bindings => {e}")
             return False
