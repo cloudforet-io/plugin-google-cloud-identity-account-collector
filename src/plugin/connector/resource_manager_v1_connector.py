@@ -18,3 +18,7 @@ class ResourceManagerV1Connector(GoogleCloudConnector):
     def list_projects(self):
         result = self.client.projects().list().execute()
         return result.get("projects", [])
+
+    def get_iam_policy(self, resource=None):
+        resource = resource or f"{self.project_id}"
+        return self.client.projects().getIamPolicy(resource=resource).execute()
