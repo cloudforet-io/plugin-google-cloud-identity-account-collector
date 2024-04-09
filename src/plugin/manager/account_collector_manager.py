@@ -158,7 +158,9 @@ class AccountCollectorManager(BaseManager):
             role_bindings = self.resource_manager_v3_connector.list_role_bindings(
                 resource=f"projects/{project_id}"
             )
-            _LOGGER.debug(f"[sync] {project_id} of role_bindings: {role_bindings}")
+            _LOGGER.debug(
+                f"[sync]{self.trusted_service_account} / {project_id} of role_bindings: {role_bindings}"
+            )
         except Exception as e:
             _LOGGER.error(f"[sync] failed to get role_bindings => {e}")
             return False
