@@ -5,6 +5,7 @@ from collections import deque
 from spaceone.core.manager import BaseManager
 from plugin.connector.resource_manager_v1_connector import ResourceManagerV1Connector
 from plugin.connector.resource_manager_v3_connector import ResourceManagerV3Connector
+from plugin.connector.cloud_asset_connector import CloudAssetConnector
 
 _LOGGER = logging.getLogger("spaceone")
 
@@ -21,6 +22,7 @@ class AccountCollectorManager(BaseManager):
         self.resource_manager_v3_connector = ResourceManagerV3Connector(
             secret_data=self.secret_data
         )
+        self.cloud_asset_connector = CloudAssetConnector(secret_data=self.secret_data)
         self.exclude_projects = None
         self.exclude_folders = None
         self.results = []
@@ -46,6 +48,9 @@ class AccountCollectorManager(BaseManager):
         ]
 
         projects_info = self.resource_manager_v1_connector.list_projects()
+        _LOGGER.debug(f"[sync] projects_info: {projects_info}")
+        service_accounts_info = self.cloud_asset_connector.list_service_account()
+        _LOGGER.debug(f"[sync] service_accounts_info: {service_accounts_info}")
         organization_info = self._get_organization_info(projects_info)
 
         if not organization_info:
