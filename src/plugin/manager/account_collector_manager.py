@@ -7,7 +7,6 @@ from time import sleep
 from spaceone.core.manager import BaseManager
 from plugin.connector.resource_manager_v1_connector import ResourceManagerV1Connector
 from plugin.connector.resource_manager_v3_connector import ResourceManagerV3Connector
-from plugin.connector.cloud_asset_connector import CloudAssetConnector
 
 _LOGGER = logging.getLogger("spaceone")
 
@@ -16,17 +15,22 @@ class AccountCollectorManager(BaseManager):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options = kwargs["options"]
+        self.trusting_organization = self.options.get("trusting_organization", False)
+        self.exclude_projects = self.options.get("exclude_projects", [])
+        self.exclude_folders = self.options.get("exclude_folders", [])
+        self.exclude_folders = [
+            str(int(folder_id)) for folder_id in self.exclude_folders
+        ]
+
         self.secret_data = kwargs["secret_data"]
         self.trusted_service_account = self.secret_data["client_email"]
+
         self.resource_manager_v1_connector = ResourceManagerV1Connector(
             secret_data=self.secret_data
         )
         self.resource_manager_v3_connector = ResourceManagerV3Connector(
             secret_data=self.secret_data
         )
-        self.cloud_asset_connector = CloudAssetConnector(secret_data=self.secret_data)
-        self.exclude_projects = None
-        self.exclude_folders = None
         self.results = []
 
     def sync(self) -> list:
@@ -43,12 +47,6 @@ class AccountCollectorManager(BaseManager):
                 }
         ]
         """
-        self.exclude_projects = self.options.get("exclude_projects", [])
-        self.exclude_folders = self.options.get("exclude_folders", [])
-        self.exclude_folders = [
-            str(int(folder_id)) for folder_id in self.exclude_folders
-        ]
-
         projects_info = self.resource_manager_v1_connector.list_projects()
         organization_info = self._get_organization_info(projects_info)
 
@@ -148,8 +146,12 @@ class AccountCollectorManager(BaseManager):
                     self._check_exclude_project(project_id)
                     and project_state == "ACTIVE"
                 ):
-                    self._check_list_iam_polices_by_api(project_id)
-                    if self._is_trusting_project(project_id):
+                    if self.trusting_organization:
+                        _LOGGER.debug(
+                            f"[sync] ServiceAccount is Trusted with Organization (ServiceAccount: {self.trusted_service_account}, Project ID: {project_id})"
+                        )
+                        self.results.append(self._make_result(project_info, locations))
+                    elif self._is_trusting_project(project_id):
                         self.results.append(self._make_result(project_info, locations))
                     else:
                         self.results.append(
@@ -180,30 +182,3 @@ class AccountCollectorManager(BaseManager):
             if fnmatch.fnmatch(project_id, exclude_project_id):
                 return False
         return True
-
-    def _check_list_iam_polices_by_api(self, project_id):
-        try:
-            rm_project_polices = self.resource_manager_v1_connector.get_iam_policy(
-                resource=project_id
-            )
-            _LOGGER.debug(
-                f"[sync] project_polices by resource manager api: {rm_project_polices}"
-            )
-        except Exception as e:
-            _LOGGER.error(
-                f"[sync] failed to get project_polices by resource manager api => {e}"
-            )
-
-        try:
-            ca_project_polices = self.cloud_asset_connector.list_iam_polices_in_project(
-                project_id
-            )
-            sleep(2)
-
-            _LOGGER.debug(
-                f"[sync] project_polices by cloud asset api : {ca_project_polices}"
-            )
-        except Exception as e:
-            _LOGGER.error(
-                f"[sync] failed to get project_polices by cloud asset api => {e}"
-            )
