@@ -21,11 +21,53 @@ def account_collector_init(params: dict) -> dict:
             'metadata': 'dict'
         }
     """
-    metadata = {}
+    options = params.get("options", {}) or {}
 
-    if options := params.get("options"):
-        pass
+    metadata = {
+        "additional_options_schema": {
+            "type": "object",
+            "properties": {
+                "trusting_organization": {
+                    "title": "Trusting Organization",
+                    "type": "boolean",
+                    "default": True,
+                },
+                "exclude_projects": {
+                    "title": "Exclude Projects",
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                    "description": "Supports Unix filename pattern matching. ex ['sys-*']",
+                },
+                "exclude_folders": {
+                    "title": "Exclude Folders",
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                    "description": "Enter the Folder ID to exclude.",
+                },
+            },
+        }
+    }
 
+    additional_options_schema = metadata["additional_options_schema"]
+
+    if trusting_organization := options.get("trusting_organization"):
+        additional_options_schema["properties"]["trusting_organization"][
+            "default"
+        ] = trusting_organization
+
+    if exclude_projects := options.get("exclude_projects"):
+        additional_options_schema["properties"]["exclude_projects"][
+            "default"
+        ] = exclude_projects
+
+    if exclude_folders := options.get("exclude_folders"):
+        additional_options_schema["properties"]["exclude_folders"][
+            "default"
+        ] = exclude_folders
+
+    metadata["additional_options_schema"] = additional_options_schema
     return {"metadata": metadata}
 
 
