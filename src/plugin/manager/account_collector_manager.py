@@ -15,7 +15,7 @@ class AccountCollectorManager(BaseManager):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.options = kwargs["options"]
-        self.trusting_organization = self.options.get("trusting_organization", False)
+        self.trusting_organization = self.options.get("trusting_organization", True)
         self.exclude_projects = self.options.get("exclude_projects", [])
         self.exclude_folders = self.options.get("exclude_folders", [])
         self.exclude_folders = [
