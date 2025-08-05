@@ -1,0 +1,17 @@
+api_pagination:
+  resource_manager_v1:
+    page_size: 100
+    methods:
+      list_projects:
+        page_size: 150
+  resource_manager_v3:
+    page_size: 50
+    methods:
+      list_projects:
+        page_size: 75
+      list_folders:
+        page_size: 30
+      search_folders:
+        page_size: 25
+  default:
+    page_size: 200 
