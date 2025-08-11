@@ -15,6 +15,7 @@ class ResourceManagerV1Connector(GoogleCloudConnector):
         super().__init__(**kwargs)
         self.secret_data = kwargs.get("secret_data", {})
 
-    def list_projects(self):
-        result = self.client.projects().list().execute()
-        return result.get("projects", [])
+    def list_projects(self, filter=None):
+        return self.list_with_pagination(
+            self.client.projects().list, method_name="list_projects", filter=filter
+        )

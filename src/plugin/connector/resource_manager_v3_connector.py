@@ -1,5 +1,5 @@
-import logging
 import itertools
+import logging
 
 from plugin.connector.base_connector import GoogleCloudConnector
 
@@ -17,15 +17,21 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
         self.secret_data = kwargs.get("secret_data", {})
 
     def list_projects(self, parent):
-        result = self.client.projects().list(parent=parent).execute()
-        return result.get("projects", [])
+        projects = self.list_with_pagination(
+            self.client.projects().list,
+            method_name="list_projects",
+            parent=parent,
+            showDeleted=True,
+        )
+        return projects
 
     def get_organization(self, organization_id):
         return self.client.organizations().get(name=organization_id).execute()
 
     def list_folders(self, parent):
-        results = self.client.folders().list(parent=parent).execute()
-        return results.get("folders", [])
+        return self.list_with_pagination(
+            self.client.folders().list, method_name="list_folders", parent=parent
+        )
 
     def list_role_bindings(self, resource):
         result = self.client.projects().getIamPolicy(resource=resource).execute()
@@ -33,5 +39,6 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
         return list(itertools.chain(*[binding["members"] for binding in bindings]))
 
     def search_folders(self):
-        results = self.client.folders().search().execute()
-        return results.get("folders", [])
+        return self.list_with_pagination(
+            self.client.folders().search, method_name="search_folders"
+        )
