@@ -18,9 +18,11 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
 
     def list_projects(self, parent):
         projects = self.list_with_pagination(
-            self.client.projects().list, method_name="list_projects", parent=parent
+            self.client.projects().list,
+            method_name="list_projects",
+            parent=parent,
+            showDeleted=True,
         )
-
         return projects
 
     def get_organization(self, organization_id):
