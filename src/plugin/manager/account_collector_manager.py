@@ -34,10 +34,13 @@ class AccountCollectorManager(BaseManager):
 
     def sync(self) -> list:
         all_projects_info = self.resource_manager_v1_connector.list_projects(
-            filter="state:ACTIVE"
+            filter="lifecycleState:ACTIVE"
         )
+        # _LOGGER.debug(f"Searching for projects. {all_projects_info}")
 
         organizations_info = self._get_organizations_info(all_projects_info)
+
+        _LOGGER.debug(f"Searching for organizations. {organizations_info}")
 
         dq = deque()
         if organizations_info:
@@ -69,7 +72,11 @@ class AccountCollectorManager(BaseManager):
                     dq.append((folder_parent, next_locations))
 
         _LOGGER.info("Searching for projects without an organization.")
-        no_org_projects = [p for p in all_projects_info if not p.get("parent")]
+        no_org_projects = [
+            p
+            for p in all_projects_info
+            if not p.get("parent") and p["projectId"] not in self.processed_project_ids
+        ]
         if no_org_projects:
             _LOGGER.debug(
                 f"Found {len(no_org_projects)} projects without an organization."
@@ -114,10 +121,9 @@ class AccountCollectorManager(BaseManager):
 
     def _create_project_response(self, parent, locations):
         try:
-            projects_info = self.resource_manager_v3_connector.list_projects(
-                parent, filter="state:ACTIVE"
-            )
-            self._process_project_list(projects_info, locations)
+            projects_info = self.resource_manager_v3_connector.list_projects(parent)
+            active_projects = [p for p in projects_info if p.get("state") == "ACTIVE"]
+            self._process_project_list(active_projects, locations)
         except Exception as e:
             _LOGGER.error(f"[sync] Failed to list projects under {parent} => {e}")
             return
@@ -127,10 +133,13 @@ class AccountCollectorManager(BaseManager):
             project_id = project_info["projectId"]
 
             if project_id in self.processed_project_ids:
+                _LOGGER.debug(
+                    f"[sync] Skipping already processed project: {project_id}"
+                )
                 continue
 
-            project_state = project_info["state"]
-            if not self._should_include_project(project_id, project_state):
+            if not self._check_exclude_project(project_id):
+                _LOGGER.debug(f"[sync] Skipping excluded project: {project_id}")
                 continue
 
             result_to_add = None
@@ -149,11 +158,6 @@ class AccountCollectorManager(BaseManager):
             if result_to_add:
                 self.results.append(result_to_add)
                 self.processed_project_ids.add(project_id)
-
-    def _should_include_project(self, project_id, state=None):
-        if state and state != "ACTIVE":
-            return False
-        return self._check_exclude_project(project_id)
 
     def _is_trusting_project(self, project_id) -> bool:
         try:

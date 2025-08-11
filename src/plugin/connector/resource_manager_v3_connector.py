@@ -1,5 +1,5 @@
-import logging
 import itertools
+import logging
 
 from plugin.connector.base_connector import GoogleCloudConnector
 
@@ -16,13 +16,10 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
         super().__init__(**kwargs)
         self.secret_data = kwargs.get("secret_data", {})
 
-    def list_projects(self, parent, filter=None):
+    def list_projects(self, parent):
         projects = self.list_with_pagination(
             self.client.projects().list, method_name="list_projects", parent=parent
         )
-
-        if filter and "state:ACTIVE" in filter:
-            projects = [p for p in projects if p.get("state") == "ACTIVE"]
 
         return projects
 
