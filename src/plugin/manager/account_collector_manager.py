@@ -91,7 +91,8 @@ class AccountCollectorManager(BaseManager):
             _LOGGER.debug(
                 f"Found {len(no_org_projects)} projects without an organization."
             )
-            self._process_project_list(no_org_projects, [])
+            # 조직이 없는 프로젝트들을 _create_project_response 메서드로 처리
+            self._create_project_response(None, no_org_projects)
 
         return self.results
 
@@ -129,11 +130,19 @@ class AccountCollectorManager(BaseManager):
 
         return list(organizations.values())
 
-    def _create_project_response(self, parent, locations):
+    def _create_project_response(self, parent, locations=None):
         # 변경점 8: try-except 블록 추가 오류를 포착하고 로그를 남긴 후, 다른 리소스에 대한 동기화 작업을 계속할 수 있게 함
 
         try:
-            projects_info = self.resource_manager_v3_connector.list_projects(parent)
+            if parent is None:
+                # 조직이 없는 프로젝트들을 처리
+                projects_info = (
+                    locations  # locations 파라미터에 프로젝트 리스트가 전달됨
+                )
+            else:
+                # 기존 로직: parent 아래의 프로젝트들을 가져옴
+                projects_info = self.resource_manager_v3_connector.list_projects(parent)
+
             active_projects = [p for p in projects_info if p.get("state") == "ACTIVE"]
 
             for project_info in active_projects or []:
@@ -154,12 +163,12 @@ class AccountCollectorManager(BaseManager):
                     _LOGGER.debug(
                         f"[sync] ServiceAccount is Trusted with Organization (Project ID: {project_id})"
                     )
-                    result_to_add = self._make_result(project_info, locations)
+                    result_to_add = self._make_result(project_info, locations or [])
                 elif self._is_trusting_project(project_id):
-                    result_to_add = self._make_result(project_info, locations)
+                    result_to_add = self._make_result(project_info, locations or [])
                 else:
                     result_to_add = self._make_result(
-                        project_info, locations, is_secret_data=False
+                        project_info, locations or [], is_secret_data=False
                     )
 
                 if result_to_add:
