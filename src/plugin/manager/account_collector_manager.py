@@ -1,10 +1,14 @@
 import fnmatch
 import logging
+import time
 from collections import deque
 from functools import lru_cache
+from typing import Any
 
+from spaceone.core.logger import ERROR_INVALID_PARAMETER
 from spaceone.core.manager import BaseManager
 
+from plugin.config.global_conf import ProjectGroupMappingType, WorkspaceMappingType
 from plugin.connector.resource_manager_v1_connector import ResourceManagerV1Connector
 from plugin.connector.resource_manager_v3_connector import ResourceManagerV3Connector
 
@@ -21,22 +25,16 @@ class AccountCollectorManager(BaseManager):
         self.exclude_folders = [
             str(int(folder_id)) for folder_id in self.exclude_folders
         ]
-        self.start_depth = self.options.get("start_depth", 0)
-
-        # include_location_from_depth 옵션 처리
-        include_location_from_depth = self.options.get("include_location_from_depth")
+        self.start_depth = self.options.get("start_depth", None)
+        include_location_from_depth = self.options.get(
+            "include_location_from_depth", None
+        )
         if include_location_from_depth is None:
             # include_location_from_depth가 없으면 start_depth 사용
             self.include_location_from_depth = self.start_depth
         else:
             self.include_location_from_depth = include_location_from_depth
 
-        # include_location_from_depth는 start_depth보다 클 수 없음
-        if self.include_location_from_depth > self.start_depth:
-            raise ValueError(
-                f"include_location_from_depth ({self.include_location_from_depth}) "
-                f"cannot be greater than start_depth ({self.start_depth})"
-            )
         self.secret_data = kwargs["secret_data"]
         self.trusted_service_account = self.secret_data["client_email"]
 
@@ -49,7 +47,7 @@ class AccountCollectorManager(BaseManager):
         self.results = []
 
         # 방문 기록을 위한 set
-        self.visited_folders = set()
+        self.visited_folders = set[Any]()
 
     def sync(self) -> list:
         """sync Google Cloud resources
@@ -65,6 +63,161 @@ class AccountCollectorManager(BaseManager):
                 }
         ]
         """
+        # FOR BACKWARD COMPATIBILITY
+        try:
+            if self.start_depth > -1 or self.include_location_from_depth > -1:
+                _LOGGER.warning(
+                    "start_depth and include_location_from_depth are deprecated. "
+                    "Ignore workspace_mapping_type and project_group_mapping_type options."
+                )
+                return self.deprecated_sync()
+        except Exception:
+            pass
+
+        workspace_mapping_type = self.options.get("workspace_mapping_type")
+        project_group_mapping_type = self.options.get(
+            "project_group_mapping_type",
+            ProjectGroupMappingType.NESTED_SUB_GROUPS.value,
+        )
+        custom_depth = self.options.get("custom_depth", 0)
+        project_list_time_start = time.time()
+        projects = self.resource_manager_v1_connector.list_all_projects()
+        _LOGGER.info(
+            f"[sync] Get Project list time: {(time.time() - project_list_time_start):.2f}s ({len(projects)} projects)"
+        )
+        folder_list_time_start = time.time()
+        folders = self.resource_manager_v3_connector.search_all_folders()
+        _LOGGER.info(
+            f"[sync] Get Folder list time: {(time.time() - folder_list_time_start):.2f}s ({len(folders)} folders)"
+        )
+
+        process_time_start = time.time()
+        match workspace_mapping_type:
+            case WorkspaceMappingType.ALL_GROUPS_SINGLE_WORKSPACE.value:
+                for project in projects:
+                    if project.get("lifecycleState") != "ACTIVE":
+                        continue
+                    if project_group_mapping_type == ProjectGroupMappingType.SKIP.value:
+                        project_info_dict = self._make_project_response(project, [])
+                    else:
+                        project_info_dict = self._make_project_response(
+                            project, self._get_project_location(project, folders)
+                        )
+                    if self._check_is_excluded(project_info_dict):
+                        continue
+                    self.results.append(project_info_dict)
+            case WorkspaceMappingType.TOP_LEVEL_GROUPS.value:
+                for project in projects:
+                    if project.get("lifecycleState") != "ACTIVE":
+                        continue
+                    location = self._get_project_location(project, folders)
+                    if not location or len(location) == 0:
+                        continue
+                    if project_group_mapping_type == ProjectGroupMappingType.SKIP.value:
+                        project_info_dict = self._make_project_response(
+                            project, [location[0]]
+                        )
+                    else:
+                        project_info_dict = self._make_project_response(
+                            project, location
+                        )
+                    if self._check_is_excluded(project_info_dict):
+                        continue
+                    self.results.append(project_info_dict)
+            case WorkspaceMappingType.LEAF_LEVEL_GROUPS.value:
+                _LOGGER.info(
+                    f"[sync] {WorkspaceMappingType.LEAF_LEVEL_GROUPS.value} is not suppport project_group_mapping_type. Ignored project_group_mapping_type."
+                )
+                for project in projects:
+                    if project.get("lifecycleState") != "ACTIVE":
+                        continue
+                    location = self._get_project_location(project, folders)
+                    if not location or len(location) == 0:
+                        continue
+                    project_info_dict = self._make_project_response(
+                        project, [location[-1]]
+                    )
+                    if self._check_is_excluded(project_info_dict):
+                        continue
+                    self.results.append(project_info_dict)
+            case WorkspaceMappingType.CUSTOM_DEPTH_GROUPS.value:
+                if int(custom_depth) < 1:
+                    raise ERROR_INVALID_PARAMETER(
+                        key="custom_depth",
+                        reason="value should be larger than or equal to 1",
+                    )
+                for project in projects:
+                    if project.get("lifecycleState") != "ACTIVE":
+                        continue
+                    location = self._get_project_location(project, folders)
+                    if not location or len(location) < custom_depth:
+                        continue
+                    custom_depth_idx = int(custom_depth) - 1  # 0-based index
+                    if project_group_mapping_type == ProjectGroupMappingType.SKIP.value:
+                        project_info_dict = self._make_project_response(
+                            project, [location[custom_depth_idx]]
+                        )
+                    else:
+                        project_info_dict = self._make_project_response(
+                            project, location[custom_depth_idx:]
+                        )
+                    if self._check_is_excluded(project_info_dict):
+                        continue
+                    self.results.append(project_info_dict)
+            case _:
+                _LOGGER.warning(
+                    f"[sync] Invalid workspace mapping type: {workspace_mapping_type}, Start sync all projects and folders."
+                )
+                for project in projects:
+                    if project.get("lifecycleState") != "ACTIVE":
+                        continue
+                    project_info_dict = self._make_project_response(
+                        project, self._get_project_location(project, folders)
+                    )
+                    if self._check_is_excluded(project_info_dict):
+                        continue
+                    self.results.append(project_info_dict)
+        _LOGGER.info(
+            f"[sync] Process time: {(time.time() - process_time_start):.4f}s ({len(self.results)} collected)"
+        )
+        return self.results
+
+    def _check_is_excluded(self, project_info_dict: dict) -> bool:
+        project_id = project_info_dict.get("data", {}).get("project_id")
+        folders_ids = [
+            f["resource_id"].removeprefix("folders/")
+            for f in project_info_dict.get("location", [])
+        ]
+        if project_id in self.exclude_projects:
+            return True
+        if any(folder_id in self.exclude_folders for folder_id in folders_ids):
+            return True
+        return False
+
+    def deprecated_sync(self):
+        """deprecated sync Google Cloud resources
+            :Returns:
+                results [
+                {
+                    name: 'str',
+                    data: 'dict',
+                    secret_schema_id: 'str',
+                    secret_data: 'dict',
+                    tags: 'dict',
+                    location: 'list'
+                }
+        ]
+        """
+        if self.start_depth is None or self.include_location_from_depth is None:
+            raise ERROR_INVALID_PARAMETER(
+                key="start_depth or include_location_from_depth",
+                reason="value should be set",
+            )
+        if self.include_location_from_depth > self.start_depth:
+            raise ERROR_INVALID_PARAMETER(
+                key="include_location_from_depth",
+                reason="value should be less than or equal to start_depth",
+            )
         _LOGGER.info(
             f"[sync] Starting sync process with start_depth: {self.start_depth}, "
             f"include_location_from_depth: {self.include_location_from_depth}"
@@ -321,6 +474,69 @@ class AccountCollectorManager(BaseManager):
         )
 
         return organization_info
+
+    def _get_organization_id_from_projects(self, projects_info):
+        for project_info in projects_info:
+            parent = project_info.get("parent")
+            if parent and parent.get("type") == "organization":
+                return parent["id"]
+        return None
+
+    def _get_organization_info_from_projects(self, projects_info):
+        for project_info in projects_info:
+            parent = project_info.get("parent")
+            if parent and parent.get("type") == "organization":
+                return self.resource_manager_v3_connector.get_organization(parent["id"])
+        return None
+
+    @staticmethod
+    def _get_project_location(project: dict, folders: list) -> list:
+        project_parent = project.get("parent")
+        folder_loc = []
+
+        if not project_parent or project_parent.get("type") == "organization":
+            return []
+
+        if project_parent.get("type") == "folder":
+            parent = f"folders/{project_parent.get('id')}"
+            while True:
+                linked_folder = next(
+                    (f for f in folders if f.get("name") == parent), None
+                )
+                if not linked_folder:
+                    break
+
+                folder_loc.append(
+                    {
+                        "name": linked_folder.get("displayName"),
+                        "resource_id": linked_folder.get("name"),
+                    }
+                )
+                parent = linked_folder.get("parent")
+                if not parent or parent.startswith("organizations/"):
+                    break
+            return folder_loc[::-1]
+        else:
+            _LOGGER.warning(
+                f"[get_project_location] Project parent is not a folder or organization: {project}"
+            )
+            return []
+
+    @staticmethod
+    def _make_project_response(project: dict, locations: list) -> dict:
+        return {
+            "name": project.get("name"),
+            "data": {
+                "project_id": project.get("projectId"),
+            },
+            "resource_id": project.get("projectId"),
+            "secret_schema_id": "google-secret-project-id",
+            "secret_data": {
+                "project_id": project.get("projectId"),
+            },
+            "tags": project.get("labels", {}),
+            "location": locations,
+        }
 
     @staticmethod
     def _make_result(project_info, locations, is_secret_data=True):

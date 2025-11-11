@@ -1,5 +1,5 @@
-import logging
 import itertools
+import logging
 
 from plugin.connector.base_connector import GoogleCloudConnector
 
@@ -35,3 +35,18 @@ class ResourceManagerV3Connector(GoogleCloudConnector):
     def search_folders(self):
         results = self.client.folders().search().execute()
         return results.get("folders", [])
+
+    def search_all_folders(self):
+        """
+        https://docs.cloud.google.com/resource-manager/reference/rest/v3/folders/search
+        Search Method, but return all folders with none query. more efficient than list recursive.
+        """
+        pagetoken = None
+        all_folders = []
+        while True:
+            results = self.client.folders().search(pageToken=pagetoken).execute()
+            all_folders.extend(results.get("folders", []))
+            pagetoken = results.get("nextPageToken")
+            if not pagetoken:
+                break
+        return all_folders

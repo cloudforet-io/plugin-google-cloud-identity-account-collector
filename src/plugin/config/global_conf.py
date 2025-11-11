@@ -1,0 +1,13 @@
+from enum import Enum
+
+
+class WorkspaceMappingType(Enum):
+    ALL_GROUPS_SINGLE_WORKSPACE = "ALL_GROUPS_SINGLE_WORKSPACE"
+    TOP_LEVEL_GROUPS = "TOP_LEVEL_GROUPS"
+    LEAF_LEVEL_GROUPS = "LEAF_LEVEL_GROUPS"
+    CUSTOM_DEPTH_GROUPS = "CUSTOM_DEPTH_GROUPS"
+
+
+class ProjectGroupMappingType(Enum):
+    SKIP = "SKIP"
+    NESTED_SUB_GROUPS = "NESTED_SUB_GROUPS"

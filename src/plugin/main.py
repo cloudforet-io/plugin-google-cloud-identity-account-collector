@@ -47,20 +47,21 @@ def account_collector_init(params: dict) -> dict:
                     "default": [],
                     "description": "Enter the Folder ID to exclude.",
                 },
-                "start_depth": {
-                    "title": "Start Depth",
-                    "type": "integer",
-                    "default": 0,
-                    "minimum": 0,
-                    "description": "Depth level to start collection from. 0=Organization, 1=First level folders, 2=Second level folders, etc.",
-                },
-                "include_location_from_depth": {
-                    "title": "Include Location From Depth",
-                    "type": "integer",
-                    "default": 0,
-                    "minimum": 0,
-                    "description": "Depth level to start including folder location in project path. Must be less than or equal to start_depth. If not set, uses start_depth value.",
-                },
+                # DEPRECATED VERSION, BUT STILL SUPPORTED FOR BACKWARD COMPATIBILITY
+                # "start_depth": {
+                #     "title": "Start Depth(DEPRECATED VERSION)",
+                #     "type": "integer",
+                #     "default": 0,
+                #     "minimum": 0,
+                #     "description": "Depth level to start collection from. 0=Organization, 1=First level folders, 2=Second level folders, etc.",
+                # },
+                # "include_location_from_depth": {
+                #     "title": "Include Location From Depth(DEPRECATED VERSION)",
+                #     "type": "integer",
+                #     "default": 0,
+                #     "minimum": 0,
+                #     "description": "Depth level to start including folder location in project path. Must be less than or equal to start_depth. If not set, uses start_depth value.",
+                # },
             },
         }
     }
