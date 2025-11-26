@@ -1,3 +1,6 @@
+import logging
+import os
+
 from spaceone.identity.plugin.account_collector.lib.server import (
     AccountCollectorPluginServer,
 )
@@ -5,6 +8,8 @@ from spaceone.identity.plugin.account_collector.lib.server import (
 from plugin.manager.account_collector_manager import AccountCollectorManager
 
 app = AccountCollectorPluginServer()
+
+_LOGGER = logging.getLogger("spaceone")
 
 
 @app.route("AccountCollector.init")
@@ -121,4 +126,10 @@ def account_collector_sync(params: dict) -> dict:
             ]
         }
     """
+    proxy_env = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if proxy_env:
+        _LOGGER.debug(
+            f"** Using proxy in environment variable HTTPS_PROXY/https_proxy: {proxy_env}"
+        )  # src/plugin/connector/base_connector.py _create_http_client
+
     return {"results": AccountCollectorManager(**params).sync()}
